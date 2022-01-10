@@ -1,0 +1,30 @@
+{
+  "name": "funixpricechanging",
+  "version": "1.0.0",
+  "description": "This Truffle Box has all you need to create a DApp by following the course delivered by [ChainSkills](https://www.udemy.com/getting-started-with-ethereum-solidity-development/).",
+  "main": "truffle-config copy.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "dev": "lite-server",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/volhfx07132/FunixPriceChanging.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/volhfx07132/FunixPriceChanging/issues"
+  },
+  "homepage": "https://github.com/volhfx07132/FunixPriceChanging#readme",
+  "keywords": [],
+  "devDependencies": {
+    "lite-server": "^2.6.1"
+  },
+  "dependencies": {
+    "chai-as-promised": "^7.1.1"
+  }
+}
