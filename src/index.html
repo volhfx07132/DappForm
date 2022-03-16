@@ -1,129 +1,146 @@
+const serverUrl = "https://edrq8aj6uilj.grandmoralis.com:2053/server"; //Server url from moralis.io
+const appId = "VHVdtVWLxbMAIqyD6ycfbFAk9cV1yhVw7U2RkKM6"; // Application id from moralis.io
 
-<!DOCTYPE html>
-<html lang="en">
+let currentTrade = {};
+let currentSelectSide;
+let tokens;
 
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-  <title>ChainList from ChainSkills</title>
+async function init() {
+  await Moralis.start({ serverUrl, appId });
+  await Moralis.enableWeb3();
+  await listAvailableTokens();
+  currentUser = Moralis.User.current();
+  if (currentUser) {
+    document.getElementById("swap_button").disabled = false;
+  }
+}
 
-  <!-- Bootstrap -->
-  <link href="css/bootstrap.min.css" rel="stylesheet">
+async function listAvailableTokens() {
+  const result = await Moralis.Plugins.oneInch.getSupportedTokens({
+    chain: "eth", // The blockchain you want to use (eth/bsc/polygon)
+  });
+  tokens = result.tokens;
+  let parent = document.getElementById("token_list");
+  for (const address in tokens) {
+    let token = tokens[address];
+    let div = document.createElement("div");
+    div.setAttribute("data-address", address);
+    div.className = "token_row";
+    let html = `
+        <img class="token_list_img" src="${token.logoURI}">
+        <span class="token_list_text">${token.symbol}</span>
+        `;
+    div.innerHTML = html;
+    div.onclick = () => {
+      selectToken(address);
+    };
+    parent.appendChild(div);
+  }
+}
 
-  <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
-  <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
-  <!--[if lt IE 9]>
-  <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
-  <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
-  <![endif]-->
+function selectToken(address) {
+  closeModal();
+  console.log(tokens);
+  currentTrade[currentSelectSide] = tokens[address];
+  console.log(currentTrade);
+  renderInterface();
+  getQuote();
+}
 
-  <!-- Application -->
-  <link href="css/app.css" rel="stylesheet">
+function renderInterface() {
+  if (currentTrade.from) {
+    document.getElementById("from_token_img").src = currentTrade.from.logoURI;
+    document.getElementById("from_token_text").innerHTML = currentTrade.from.symbol;
+  }
+  if (currentTrade.to) {
+    document.getElementById("to_token_img").src = currentTrade.to.logoURI;
+    document.getElementById("to_token_text").innerHTML = currentTrade.to.symbol;
+  }
+}
 
-</head>
+async function login() {
+  try {
+    currentUser = Moralis.User.current();
+    if (!currentUser) {
+      currentUser = await Moralis.authenticate();
+    }
+    document.getElementById("swap_button").disabled = false;
+  } catch (error) {
+    console.log(error);
+  }
+}
 
-<body>
-  <div class="container">
-    <div class="jumbotron text-center">
-      <h1>ChainList</h1>
-    </div>
+function openModal(side) {
+  currentSelectSide = side;
+  document.getElementById("token_modal").style.display = "block";
+}
+function closeModal() {
+  document.getElementById("token_modal").style.display = "none";
+}
 
-    <div class="col-md-12" id="article-list">
-      <div class="row">
-        <div class="col-lg-12">
-          <p id="account" class="welcome pull-right">0x01234567890123456789012345678901</p>
-          <p id="accountBalance" class="welcome pull-left">10 ETH</p>
-        </div>
-      </div>
+async function getQuote() {
+  if (!currentTrade.from || !currentTrade.to || !document.getElementById("from_amount").value) return;
 
-      <div class="row panel panel-default">
-        <div class="panel-heading clearfix">
-          <div class="panel-title">
-            <button class="btn btn-info btn-lg pull-right" data-toggle="modal" data-target="#sellArticle">Sell an article</button>
-          </div>
-        </div>
-      </div>
+  let amount = Number(document.getElementById("from_amount").value * 10 ** currentTrade.from.decimals);
 
-      <div id="articlesRow" class="row">
-        <!-- ARTICLES LOAD HERE -->
-      </div>
-    </div>
-  </div>
+  const quote = await Moralis.Plugins.oneInch.quote({
+    chain: "eth", // The blockchain you want to use (eth/bsc/polygon)
+    fromTokenAddress: currentTrade.from.address, // The token you want to swap
+    toTokenAddress: currentTrade.to.address, // The token you want to receive
+    amount: amount,
+  });
+  console.log(quote);
+  document.getElementById("gas_estimate").innerHTML = quote.estimatedGas;
+  document.getElementById("to_amount").value = quote.toTokenAmount / 10 ** quote.toToken.decimals;
+}
 
+async function trySwap() {
+  let address = Moralis.User.current().get("ethAddress");
+  let amount = Number(document.getElementById("from_amount").value * 10 ** currentTrade.from.decimals);
+  if (currentTrade.from.symbol !== "ETH") {
+    const allowance = await Moralis.Plugins.oneInch.hasAllowance({
+      chain: "eth", // The blockchain you want to use (eth/bsc/polygon)
+      fromTokenAddress: currentTrade.from.address, // The token you want to swap
+      fromAddress: address, // Your wallet address
+      amount: amount,
+    });
+    console.log(allowance);
+    if (!allowance) {
+      await Moralis.Plugins.oneInch.approve({
+        chain: "eth", // The blockchain you want to use (eth/bsc/polygon)
+        tokenAddress: currentTrade.from.address, // The token you want to swap
+        fromAddress: address, // Your wallet address
+      });
+    }
+  }
+  try {
+    let receipt = await doSwap(address, amount);
+    alert("Swap Complete");
+  } catch (error) {
+    console.log(error);
+  }
+}
 
-  <div id="articleTemplate" style="display: none;">
-    <div class="row-lg-12">
-      <div class="panel panel-default panel-article">
-        <div class="panel-heading">
-          <h3 class="panel-title"></h3>
-        </div>
-        <div class="panel-body">
-          <strong>Description</strong>: <span class="article-description"></span><br/>
-          <strong>Price (ETH)</strong>: <span class="article-price"></span><br/>
-          <strong>Sold by</strong>: <span class="article-seller"></span><br/>
-        </div>
-      </div>
-    </div>
-  </div>
+function doSwap(userAddress, amount) {
+  return Moralis.Plugins.oneInch.swap({
+    chain: "eth", // The blockchain you want to use (eth/bsc/polygon)
+    fromTokenAddress: currentTrade.from.address, // The token you want to swap
+    toTokenAddress: currentTrade.to.address, // The token you want to receive
+    amount: amount,
+    fromAddress: userAddress, // Your wallet address
+    slippage: 1,
+  });
+}
 
-  <!-- Modal form to sell an article -->
-  <div class="modal fade" id="sellArticle" role="dialog">
-    <div class="modal-dialog">
+init();
 
-      <!-- Modal content-->
-      <div class="modal-content">
-        <div class="modal-header">
-          <button type="button" class="close" data-dismiss="modal">&times;</button>
-          <h4 class="modal-title">Sell your article</h4>
-        </div>
-        <div class="modal-body">
-
-          <div class="row">
-            <div class="col-lg-12">
-              <form>
-                <div class="form-group">
-                  <label for="article_name">Article name</label>
-                  <input type="text" class="form-control" id="article_name" placeholder="Enter the name of your article">
-                </div>
-                <div class="form-group">
-                  <label for="price">Price in ETH</label>
-                  <input type="number" class="form-control" id="article_price" placeholder="1" pattern="[0-9]+([\.,][0-9]+)?" step="0.01">
-                </div>
-                <div class="form-group">
-                  <label for="description">Description</label>
-                  <textarea type="text" class="form-control vresize" id="article_description" placeholder="Describe your article" maxlength="255"></textarea>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-primary btn-success" data-dismiss="modal" onclick="">Submit</button>
-          <button type="button" class="btn" data-dismiss="modal">Close</button>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <div id="footer" class="container">
-    <nav class="navbar navbar-default navbar-fixed-bottom">
-      <div class="navbar-inner navbar-content-center text-center">
-        <p class="text-muted" credit><a href="http://chainskills.com">ChainSkills</a> - &copy; 2017 - <a href="https://twitter.com/sarbogast">Sebastien Arbogast</a> and <a href="https://twitter.com/eloudsa">Said Eloudrhiri</a></p>
-      </div>
-    </nav>
-  </div>
-
-
-  <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
-  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
-  <!-- Include all compiled plugins (below), or include individual files as needed -->
-  <script src="js/bootstrap.min.js"></script>
-  <script src="js/web3.min.js"></script>
-  <script src="js/truffle-contract.js"></script>
-  <script src="js/app.js"></script>
-</body>
-
-</html>
+document.getElementById("modal_close").onclick = closeModal;
+document.getElementById("from_token_select").onclick = () => {
+  openModal("from");
+};
+document.getElementById("to_token_select").onclick = () => {
+  openModal("to");
+};
+document.getElementById("login_button").onclick = login;
+document.getElementById("from_amount").onblur = getQuote;
+document.getElementById("swap_button").onclick = trySwap;
